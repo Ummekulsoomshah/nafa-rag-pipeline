@@ -31,7 +31,10 @@ ENV/
 Thumbs.db
 
 # Project artifacts / large generated files (do not commit)
-faiss_index.idx
-faiss_metadata.pkl
+faiss_index_file.idx
+faiss_metadata_file.pkl
 psx_processed_for_rag.csv
 PSX_Combined_100_plus.csv
+
+# ignore psx_data folder
+psx_data/

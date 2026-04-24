@@ -1,4 +1,3 @@
-# ---------- app.py ----------
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
@@ -9,14 +8,14 @@ import os
 
 app = FastAPI(title="Nafa.ai RAG API Service")
 
-index = faiss.read_index("faiss_index.idx")
-with open("faiss_metadata.pkl", "rb") as f:
+index = faiss.read_index("faiss_index_file.idx")
+with open("faiss_metadata_file.pkl", "rb") as f:
     metadata = pickle.load(f)
 
 sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Setup Gemini
-gemini_api_key = os.getenv("GEMINI_API_KEY")
+gemini_api_key = 'AIzaSyDxdEN-lae6__1JESazjiW7c27K2WeIzmE'
 genai.configure(api_key=gemini_api_key)
 gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
@@ -33,7 +32,7 @@ def embed_query(text: str):
     return vec
 
 
-def get_recommendations_for_risk(risk_level: str, top_k: int = 30):
+def get_recommendations_for_risk(risk_level: str, top_k: int = 170):
     """Search the FAISS index for relevant companies given a risk profile."""
     query = f"best {risk_level.lower()} risk investment companies in Pakistan"
     qvec = embed_query(query)
