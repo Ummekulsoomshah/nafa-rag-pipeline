@@ -15,8 +15,7 @@ with open("faiss_metadata_file.pkl", "rb") as f:
 sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Setup Gemini
-gemini_api_key = 'AIzaSyDxdEN-lae6__1JESazjiW7c27K2WeIzmE'
-genai.configure(api_key=gemini_api_key)
+genai.configure(api_key="AIzaSyAAC9JFqPrMgyQabf48xMX1AVfm1I3tcKE")
 gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
 
