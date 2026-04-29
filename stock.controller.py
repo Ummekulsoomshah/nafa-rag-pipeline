@@ -1,114 +1,8 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI,HTTPException,Depends
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-import lxml
-import re
-from pydantic import BaseModel
-from typing import List
-import faiss, pickle, numpy as np
-import pytz
-from sentence_transformers import SentenceTransformer
-import google.generativeai as genai
-from sqlalchemy.orm import Session
-from sympy import limit
-from db.database import get_db,SessionLocal
-import os
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
-from stocks_table import Stock
 
-
-app = FastAPI(title="Nafa.ai RAG API Service")
-local_timezon=pytz.timezone('Asia/Karachi')
-now=datetime.now(local_timezon).strftime("%Y-%m-%d %H:%M:%S")
-
-index = faiss.read_index("faiss_index_file.idx")
-with open("faiss_metadata_file.pkl", "rb") as f:
-    metadata = pickle.load(f)
-
-sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
-
-# Setup Gemini
-# genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-# gemini_model = genai.GenerativeModel("gemini-2.5-flash")
-
-
-class RiskRequest(BaseModel):
-    risk: str  # Low, Moderate, or High
-
-
-def embed_query(text: str):
-    """Convert a query to a FAISS vector embedding."""
-    vec = sentence_model.encode([text])
-    vec = np.array(vec).astype("float32")
-    faiss.normalize_L2(vec)
-    return vec
-
-
-from sqlalchemy import func
-from sqlalchemy.orm import aliased
-
-def get_recommendations_for_risk(db, risk_level: str):
-    risk_level = risk_level.capitalize() + " Risk"
-
-    subquery = (
-        db.query(
-            Stock.symbol,
-            func.max(Stock.timestamp).label("latest_time")
-        )
-        .group_by(Stock.symbol)
-        .subquery()
-    )
-
-    query = (
-        db.query(Stock)
-        .join(
-            subquery,
-            (Stock.symbol == subquery.c.symbol) &
-            (Stock.timestamp == subquery.c.latest_time)
-        )
-        .filter(Stock.risk_level == risk_level)
-    )
-
-    # ordering logic
-    if risk_level == "Low Risk":
-        query = query.order_by(Stock.beta.asc())
-    else:
-        query = query.order_by(Stock.beta.desc())
-
-    return query.all()
-
-def generate_summary(risk_level: str, recommendations: list):
-    """Use Gemini to summarize or explain recommendations."""
-    if not recommendations:
-        return f"No recommendations found for {risk_level} risk investors."
-
-    prompt = f"""
-    You are a financial advisor for Pakistani retail investors.
-    The user's risk profile is: {risk_level}.
-    Below are recommended companies with their details.
-    Please summarize key insights and mention 2-3 standout companies briefly.
-
-    Recommendations:
-    {recommendations[:10]}  # only a few top for context
-    """
-
-    response = gemini_model.generate_content(prompt)
-    return response.text
-
-
-@app.post("/recommend-by-risk")
-def recommend_by_risk(req: RiskRequest, db: Session = Depends(get_db)):
-    results = get_recommendations_for_risk(db, req.risk)
-    # summary = generate_summary(req.risk, results)
-    return {
-        # "summary": summary,
-        "recommendations": results
-    }
-
-
+import app
 company_symbol_dict={'1st.Fid.Leasing':'fid',
  '786 Invest Ltd':'786',
  'AGP Limited':'AGP',
@@ -1335,9 +1229,8 @@ stock_data={'AGTL': 0.65,
  'BNWM': 0.65,
  'NETS': 0.21}
 
-@app.get('/scrape_and_insert')
+@app.route('/scrape_and_insert', methods=['GET'])
 def scrape_and_insert():
-    db=SessionLocal()
     print("⏳ Scraping started from Flask endpoint...", datetime.now())
 
     url = "https://www.psx.com.pk/market-summary/"
@@ -1345,7 +1238,7 @@ def scrape_and_insert():
         webpage = requests.get(url).text
         soup = BeautifulSoup(webpage, 'lxml')
     except requests.exceptions.RequestException as e:
-        return HTTPException(status_code=500, detail=f"Failed to fetch webpage: {e}")
+        return jsonify({"status": "error", "message": f"Failed to fetch webpage: {e}"}), 500
 
     tables = soup.find_all('div', class_="table-responsive")
     all_sector_data = []
@@ -1385,17 +1278,12 @@ def scrape_and_insert():
                     change = float(change_match.group(0)) if change_match else 0.0
 
                     volume = int(cols[7].get_text(strip=True).replace(',', ''))
-                    print("current",type(current),current)
                 except ValueError as e:
                     print(f"Warning: Could not convert numeric data for {scrip} ({symbol}): {e}. Skipping.")
                     continue # Skip this row if numeric conversion fails
 
                 shariah_status = shariah_data.get(symbol, [None, 'Non-Compliant'])[1] # Default to Non-Compliant
-                beta = stock_data.get(symbol) # Default BETA to 1.0 if not found
-                # print(f"Processing {scrip} ({symbol}): BETA={beta}, Shariah Status={shariah_status}")
-
-                if beta is None:
-                    beta = 1.0
+                beta = stock_data.get(symbol, 1.0) # Default BETA to 1.0 if not found
 
                 # Determine RiskLevel
                 if beta < 1:
@@ -1423,41 +1311,7 @@ def scrape_and_insert():
         if sector_rows:
             all_sector_data.extend(sector_rows)
 
-        # print(f"✅ Scraped {len(sector_rows)} rows for sector: {sector_name}")
-    if all_sector_data:
-        for data in all_sector_data:
-            print("data",type(data['current']),data['current'])
-            stock_entry=Stock(
-                name=data['scrip'],
-                symbol=data['symbol'],
-                sector=data['sector'],
-                open=data['open'],
-                high=data['high'],
-                low=data['low'],
-                current_price=data['current'],
-                change=data['change'],
-                volume=data['volume'],
-                shariah_status=data['shariah_status'],
-                beta=data['beta'],
-                risk_level=data['risk_level'],
-                timestamp=datetime.now()
-            )
-            db.add(stock_entry)
-            print("stock entry",type(stock_entry.current_price),stock_entry.current_price)
-            # print(f"Inserted {data['scrip']} ({data['symbol']}) into database.")
-        db.commit()
-        print("added into db")
-    return all_sector_data
 
 
-    # print("all_sector_data:", all_sector_data)
-schedular=AsyncIOScheduler(timezone=local_timezon)
-# trigger=CronTrigger(hour=16, minute=54)
-schedular.add_job(scrape_and_insert, IntervalTrigger(minutes=5))
-schedular.start()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Starting up the application...")
-    yield
-    print("Shutting down the application...")
+            
