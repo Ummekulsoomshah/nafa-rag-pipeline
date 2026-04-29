@@ -24,11 +24,11 @@ app = FastAPI(title="Nafa.ai RAG API Service")
 local_timezon=pytz.timezone('Asia/Karachi')
 now=datetime.now(local_timezon).strftime("%Y-%m-%d %H:%M:%S")
 
-index = faiss.read_index("faiss_index_file.idx")
-with open("faiss_metadata_file.pkl", "rb") as f:
-    metadata = pickle.load(f)
+# index = faiss.read_index("faiss_index_file.idx")
+# with open("faiss_metadata_file.pkl", "rb") as f:
+#     metadata = pickle.load(f)
 
-sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
+# sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Setup Gemini
 # genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -39,12 +39,12 @@ class RiskRequest(BaseModel):
     risk: str  # Low, Moderate, or High
 
 
-def embed_query(text: str):
-    """Convert a query to a FAISS vector embedding."""
-    vec = sentence_model.encode([text])
-    vec = np.array(vec).astype("float32")
-    faiss.normalize_L2(vec)
-    return vec
+# def embed_query(text: str):
+#     """Convert a query to a FAISS vector embedding."""
+#     vec = sentence_model.encode([text])
+#     vec = np.array(vec).astype("float32")
+#     faiss.normalize_L2(vec)
+#     return vec
 
 
 from sqlalchemy import func
@@ -80,23 +80,23 @@ def get_recommendations_for_risk(db, risk_level: str):
 
     return query.all()
 
-def generate_summary(risk_level: str, recommendations: list):
-    """Use Gemini to summarize or explain recommendations."""
-    if not recommendations:
-        return f"No recommendations found for {risk_level} risk investors."
+# def generate_summary(risk_level: str, recommendations: list):
+#     """Use Gemini to summarize or explain recommendations."""
+#     if not recommendations:
+#         return f"No recommendations found for {risk_level} risk investors."
 
-    prompt = f"""
-    You are a financial advisor for Pakistani retail investors.
-    The user's risk profile is: {risk_level}.
-    Below are recommended companies with their details.
-    Please summarize key insights and mention 2-3 standout companies briefly.
+#     prompt = f"""
+#     You are a financial advisor for Pakistani retail investors.
+#     The user's risk profile is: {risk_level}.
+#     Below are recommended companies with their details.
+#     Please summarize key insights and mention 2-3 standout companies briefly.
 
-    Recommendations:
-    {recommendations[:10]}  # only a few top for context
-    """
+#     Recommendations:
+#     {recommendations[:10]}  # only a few top for context
+#     """
 
-    response = gemini_model.generate_content(prompt)
-    return response.text
+#     response = gemini_model.generate_content(prompt)
+#     return response.text
 
 
 @app.post("/recommend-by-risk")
