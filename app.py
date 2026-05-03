@@ -6,10 +6,8 @@ import lxml
 import re
 from pydantic import BaseModel
 from typing import List
-import faiss, pickle, numpy as np
+import numpy as np
 import pytz
-from sentence_transformers import SentenceTransformer
-import google.generativeai as genai
 from sqlalchemy.orm import Session
 from sympy import limit
 from db.database import get_db,SessionLocal
