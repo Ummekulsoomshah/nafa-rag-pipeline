@@ -13,37 +13,19 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 from stocks_table import Stock
-
+from sqlalchemy import func
+from sqlalchemy.orm import aliased
 
 app = FastAPI(title="Nafa.ai RAG API Service")
 local_timezon=pytz.timezone('Asia/Karachi')
 now=datetime.now(local_timezon).strftime("%Y-%m-%d %H:%M:%S")
-
-# index = faiss.read_index("faiss_index_file.idx")
-# with open("faiss_metadata_file.pkl", "rb") as f:
-#     metadata = pickle.load(f)
-
-# sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
-
-# Setup Gemini
-# genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-# gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
 
 class RiskRequest(BaseModel):
     risk: str  # Low, Moderate, or High
 
 
-# def embed_query(text: str):
-#     """Convert a query to a FAISS vector embedding."""
-#     vec = sentence_model.encode([text])
-#     vec = np.array(vec).astype("float32")
-#     faiss.normalize_L2(vec)
-#     return vec
 
-
-from sqlalchemy import func
-from sqlalchemy.orm import aliased
 
 def get_recommendations_for_risk(db, risk_level: str):
     risk_level = risk_level.capitalize() + " Risk"
@@ -75,31 +57,11 @@ def get_recommendations_for_risk(db, risk_level: str):
 
     return query.all()
 
-# def generate_summary(risk_level: str, recommendations: list):
-#     """Use Gemini to summarize or explain recommendations."""
-#     if not recommendations:
-#         return f"No recommendations found for {risk_level} risk investors."
-
-#     prompt = f"""
-#     You are a financial advisor for Pakistani retail investors.
-#     The user's risk profile is: {risk_level}.
-#     Below are recommended companies with their details.
-#     Please summarize key insights and mention 2-3 standout companies briefly.
-
-#     Recommendations:
-#     {recommendations[:10]}  # only a few top for context
-#     """
-
-#     response = gemini_model.generate_content(prompt)
-#     return response.text
-
 
 @app.post("/recommend-by-risk")
 def recommend_by_risk(req: RiskRequest, db: Session = Depends(get_db)):
     results = get_recommendations_for_risk(db, req.risk)
-    # summary = generate_summary(req.risk, results)
     return {
-        # "summary": summary,
         "recommendations": results
     }
 
@@ -1329,7 +1291,21 @@ stock_data={'AGTL': 0.65,
  'SSOM': 0.73,
  'BNWM': 0.65,
  'NETS': 0.21}
-
+def find_symbol(scrip: str, company_dict: dict) -> str:
+    """
+    First try exact match, then try if any dict key is contained
+    in the scrip name (handles XD, XB, CPS, Pref, or any future suffix).
+    """
+    # 1. Exact match first (fastest)
+    if scrip in company_dict:
+        return company_dict[scrip]
+    
+    # 2. Partial match — find dict key inside scrip name
+    for company_name, symbol in company_dict.items():
+        if company_name and company_name in scrip:
+            return symbol
+    
+    return ''
 @app.get('/scrape_and_insert')
 def scrape_and_insert():
     db=SessionLocal()
@@ -1361,7 +1337,9 @@ def scrape_and_insert():
             cols = row.find_all('td')
             if len(cols) >= 8: # Ensure enough columns are present
                 scrip = cols[0].get_text(strip=True)
-                symbol = company_symbol_dict.get(scrip, '')
+                
+                # symbol = company_symbol_dict.get(scrip, '')
+                symbol = find_symbol(scrip, company_symbol_dict)
 
                 if not symbol: # Skip if symbol not found in our dict
                     continue
